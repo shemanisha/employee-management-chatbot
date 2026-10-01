@@ -14,7 +14,7 @@ AsyncSessionLocal=async_sessionmaker(bind=engine, expire_on_commit=False)
 
 async def get_db():
 
-    async with AsyncSessionLocal as session:
+    async with AsyncSessionLocal() as session:
         try:
             # Give session to FastApi endpoint
             yield session

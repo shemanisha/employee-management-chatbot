@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
 
 
-    app_name : str
+    app_name: str = "Employee Management Chatbot"
     
     # Postgres database url
     database_url : str

@@ -1,4 +1,8 @@
 from fastapi import FastAPI, Request
+
+from api.routes.auth import router as auth_router
+from api.routes.employees import router as employee_router
+
 from fastapi.responses import JSONResponse
 
 from core.config import settings
@@ -10,9 +14,14 @@ from core.exceptions import (
 )
 
 
+
+
 app = FastAPI(
     title=settings.app_name,
 )
+
+app.include_router(auth_router)
+app.include_router(employee_router)
 
 
 @app.exception_handler(EmployeeNotFoundError)
