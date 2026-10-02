@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.permissions import require_employee, require_hr, require_manager
 from core.security import decode_access_token
 from db.session import get_db
 from repositories.user_repository import UserRepository
@@ -46,3 +47,39 @@ async def get_current_user(
         )
 
     return user
+
+
+async def employee_only(
+    current_user=Depends(get_current_user)
+):
+    """
+    Allow only employees.
+    """
+
+    require_employee(current_user)
+
+    return current_user
+
+
+async def manager_only(
+    current_user=Depends(get_current_user)
+):
+    """
+    Allow only managers.
+    """
+
+    require_manager(current_user)
+
+    return current_user
+
+
+async def hr_only(
+    current_user=Depends(get_current_user)
+):
+    """
+    Allow only HR users.
+    """
+
+    require_hr(current_user)
+
+    return current_user

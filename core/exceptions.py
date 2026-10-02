@@ -32,3 +32,14 @@ class InsufficientLeaveBalanceError(AppError):
 
 class InvalidLeaveDateError(AppError):
     pass
+
+class LeaveRequestNotFoundError(AppError):
+    pass
+
+
+class LeaveAlreadyProcessedError(AppError):
+    pass
+
+
+class UnauthorizedLeaveActionError(AppError):
+    pass
