@@ -449,10 +449,14 @@ Example request:
 
 ```json
 {
-  "email": "rahul@company.com",
-  "password": "Password@123"
+  "email": "<your-email>",
+  "password": "<your-password>"
 }
 ```
+
+Use your own credentials only when testing locally. Never put real passwords,
+access tokens, or other secrets in this README, source control, screenshots,
+or logs.
 
 Authentication flow:
 
@@ -495,7 +499,7 @@ Phase 7   Authentication + JWT          ✅
 
 -------------------------------------------
 
-Phase 8   RBAC + Authorization          ⏳ NEXT
+Phase 8   RBAC + Authorization          ✅ Implemented
 Phase 9   Employee/Leave APIs           ⬜ Planned
 Phase 10  MCP Server                    ✅ Implemented
 Phase 11  MCP Tools + Security          ✅ Implemented
@@ -517,9 +521,9 @@ Phase 23  Docker + Deployment           ⬜ Planned
 
 # Phase 8 — RBAC + Authorization
 
-**Status: ⏳ Next**
+**Status: ✅ Implemented**
 
-Implement role-based authorization for:
+The baseline role checks and authorization flows are implemented for:
 
 ```text
 EMPLOYEE
@@ -527,15 +531,14 @@ MANAGER
 HR
 ```
 
-The phase will include:
+Implemented:
 
-- Load authenticated user's roles
-- Permission dependencies
-- Employee permissions
-- Manager permissions
-- HR permissions
-- Ownership checks
-- Manager/team authorization
+- API dependencies authenticate users from JWTs and reject inactive accounts.
+- Employee, manager, and HR routes enforce their corresponding roles.
+- Leave requests use the authenticated employee's ID, not an ID supplied in
+  the request body.
+- Managers can approve or reject only leave requests from their own team.
+- MCP tools perform the matching role check before invoking services.
 
 Example:
 
@@ -553,7 +556,9 @@ approve_leave     ❌
 deactivate_user   ❌
 ```
 
-The backend remains the final authorization boundary even when an AI agent is added.
+The backend remains the authorization boundary; an AI agent or client-provided
+identity is not trusted as proof of a user's permissions. Automated
+authorization test coverage and production hardening remain separate work.
 
 ---
 
