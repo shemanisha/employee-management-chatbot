@@ -17,3 +17,7 @@ python-multipart
 pytest
 pytest-asyncio
 httpx
+
+mcp[cli]<2
+langgraph
+langchain-ollama

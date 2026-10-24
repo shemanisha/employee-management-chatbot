@@ -497,8 +497,8 @@ Phase 7   Authentication + JWT          ✅
 
 Phase 8   RBAC + Authorization          ⏳ NEXT
 Phase 9   Employee/Leave APIs           ⬜ Planned
-Phase 10  MCP Server                    ⬜ Planned
-Phase 11  MCP Tools + Security          ⬜ Planned
+Phase 10  MCP Server                    ✅ Implemented
+Phase 11  MCP Tools + Security          ✅ Implemented
 Phase 12  MCP Client                    ⬜ Planned
 Phase 13  LLM / Ollama                  ⬜ Planned
 Phase 14  LangGraph Agent               ⬜ Planned
@@ -587,7 +587,7 @@ PATCH /hr/employees/{id}
 
 # Phase 10 — MCP Server
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
 Introduce a Model Context Protocol server between the agent and business services.
 
@@ -601,15 +601,60 @@ MCP Server
 Services
 ```
 
-The MCP server will not contain SQL queries directly.
+The MCP server does not contain SQL queries directly. Run it from the project
+root with:
+
+```bash
+./.venv/bin/python -m mcp_server.server
+```
+
+It listens on `127.0.0.1:8001` using Streamable HTTP.
+
+## Run and test the MCP server
+
+Start the FastAPI application in one terminal from the project root:
+
+```bash
+./.venv/bin/uvicorn app.main:app --reload --port 8000
+```
+
+Open `http://127.0.0.1:8000/docs`, call `POST /auth/login`, and copy the
+returned `access_token`. A running API and database are only needed to obtain
+the token; the MCP server is a separate process.
+
+Start the MCP server in a second terminal:
+
+```bash
+./.venv/bin/python -m mcp_server.server
+```
+
+Start MCP Inspector in a third terminal:
+
+```bash
+npx --yes @modelcontextprotocol/inspector@2.12.0
+```
+
+Open the Inspector URL printed in that terminal. Select **Streamable HTTP**,
+set the server URL to `http://127.0.0.1:8001/mcp`, and connect. For
+authenticated tools, configure this request header in Inspector:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+`health_check` does not require a token. The employee tools require an
+EMPLOYEE user, manager tools require a MANAGER user, and HR tools require an
+HR user. After changing tool registrations or implementations, stop and
+restart the MCP server, then reconnect Inspector. The tools list should
+include `health_check` and the tools listed below.
 
 ---
 
 # Phase 11 — MCP Tools + Security
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Employee tools:
+Available tools:
 
 ```text
 get_my_profile
@@ -617,28 +662,19 @@ get_my_manager
 get_my_leave_balance
 get_my_leave_requests
 apply_leave
-```
-
-Manager tools:
-
-```text
 get_my_team
-get_team_pending_leaves
+get_pending_leaves
 approve_leave
 reject_leave
-```
-
-HR tools:
-
-```text
+get_all_employees
 search_employees
-get_employee
 create_employee
-update_employee
 deactivate_employee
 ```
 
-Tool execution will still enforce backend authorization.
+Tools reuse the service layer and enforce the authenticated user's EMPLOYEE,
+MANAGER, or HR role. MCP clients must send the JWT using the
+`Authorization: Bearer <token>` header.
 
 ---
 
