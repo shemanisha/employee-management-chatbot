@@ -1,4 +1,5 @@
 import asyncio
+import os
 from getpass import getpass
 
 from dotenv import load_dotenv
@@ -14,7 +15,7 @@ from agent.graph import create_agent
 load_dotenv()
 
 
-MCP_SERVER_URL = "http://127.0.0.1:8001/mcp"
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL")
 
 
 async def main():

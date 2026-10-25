@@ -503,10 +503,10 @@ Phase 8   RBAC + Authorization          ✅ Implemented
 Phase 9   Employee/Leave APIs           ✅ Implemented
 Phase 10  MCP Server                    ✅ Implemented
 Phase 11  MCP Tools + Security          ✅ Implemented
-Phase 12  MCP Client                    ⬜ Planned
-Phase 13  LLM / Ollama                  ⬜ Planned
-Phase 14  LangGraph Agent               ⬜ Planned
-Phase 15  Agent ↔ MCP Integration       ⬜ Planned
+Phase 12  MCP Client                    ✅ Implemented
+Phase 13  LLM / Ollama                  ✅ Implemented
+Phase 14  LangGraph Agent               ✅ Implemented
+Phase 15  Agent ↔ MCP Integration       ✅ Implemented
 Phase 16  Conversation History          ⬜ Planned
 Phase 17  SSE Streaming                 ⬜ Planned
 Phase 18  Guardrails                    ⬜ Planned
@@ -689,27 +689,30 @@ MANAGER, or HR role. MCP clients must send the JWT using the
 
 # Phase 12 — MCP Client
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Implement:
+The MCP client in `mcp_client/client.py` connects to the Streamable HTTP
+server, sends the signed-in user's bearer token, discovers available tools,
+calls tools, and displays their results. Requests have timeouts and report
+connection or tool errors.
 
-- MCP connection
-- Tool discovery
-- Tool listing
-- Tool invocation
-- Tool result handling
-- Timeouts
-- MCP error handling
+Run the client example from the project root:
+
+```bash
+./.venv/bin/python -m mcp_client.client
+```
 
 ---
 
 # Phase 13 — LLM / Ollama
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Connect an open-source model using Ollama.
+The agent uses Ollama through `ChatOllama` in `agent/llm.py`. Set
+`OLLAMA_MODEL` in `.env` to select a locally available model. The default is
+`llama3.2:3b`.
 
-The model will be responsible for:
+The model can:
 
 ```text
 Understand user request
@@ -729,9 +732,11 @@ The LLM will not have direct database access.
 
 # Phase 14 — LangGraph Agent
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Initial agent workflow:
+The LangGraph agent uses a message state and two nodes: an agent node that
+asks the model what to do, and a tool node that runs requested MCP tools.
+After a tool result, the graph returns to the agent; otherwise it ends.
 
 ```text
 START
@@ -759,9 +764,11 @@ The first version will use one agent rather than unnecessary multi-agent complex
 
 # Phase 15 — Agent + MCP Integration
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Connect:
+`run_agent.py` connects the interactive chat loop to Ollama, LangGraph, and
+the MCP server. The MCP session uses the signed-in user's JWT, so tools apply
+the existing authentication and authorization rules.
 
 ```text
 User
@@ -781,36 +788,37 @@ Repository
 PostgreSQL
 ```
 
-Example:
+## Run the agent
+
+1. Start Ollama and ensure the model configured in `.env` is downloaded:
+
+   ```bash
+   ollama pull llama3.2:3b
+   ```
+
+2. Start the FastAPI application and MCP server in separate terminals:
+
+   ```bash
+   ./.venv/bin/uvicorn app.main:app --reload --port 8000
+   ```
+
+   ```bash
+   ./.venv/bin/python -m mcp_server.server
+   ```
+
+3. From the project root, run the interactive agent:
+
+   ```bash
+   ./.venv/bin/python run_agent.py
+   ```
+
+4. Paste the access token returned by `POST /auth/login`, then ask a question.
+   Type `exit` to stop the chat.
+
+Example question:
 
 ```text
 "How many casual leaves do I have?"
-
-                ↓
-
-Agent selects:
-
-get_my_leave_balance
-
-                ↓
-
-MCP
-
-                ↓
-
-LeaveService
-
-                ↓
-
-PostgreSQL
-
-                ↓
-
-7
-
-                ↓
-
-"You have 7 casual leave days remaining."
 ```
 
 ---

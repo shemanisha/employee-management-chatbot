@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # Ollama settings
     ollama_model : str
 
+    MCP_SERVER_URL : str
+
     class Config:
         #Read environment variables from a .env file
         env_file = ".env"
