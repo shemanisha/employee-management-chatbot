@@ -22,7 +22,7 @@ async def get_my_profile(ctx: Context) -> dict:
         user = await get_authenticated_user(
             ctx,
             db,
-            required_role="EMPLOYEE",
+            required_role=None,
         )
 
         # Reuse our existing service.

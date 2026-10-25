@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     jwt_algorithm : str
     access_token_expire_minutes : int
 
+    # Ollama settings
+    ollama_model : str
+
     class Config:
         #Read environment variables from a .env file
         env_file = ".env"
