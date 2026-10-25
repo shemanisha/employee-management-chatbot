@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -34,6 +35,10 @@ class FakeRepository:
 
     async def add_messages(self, _session, messages):
         self.saved_messages.extend(messages)
+
+
+def make_user(user_id):
+    return SimpleNamespace(id=user_id, user_roles=[])
 
 
 class FakeMCPClientSession:
@@ -166,7 +171,7 @@ async def test_stream_sends_events_and_saves_completed_turn(monkeypatch):
             scheme="Bearer",
             credentials="test-token",
         ),
-        current_user=SimpleNamespace(id=4),
+        current_user=make_user(4),
         db=object(),
     )
     body = await read_sse_body(response)
@@ -199,7 +204,7 @@ async def test_stream_does_not_save_an_incomplete_turn_after_disconnect(monkeypa
             scheme="Bearer",
             credentials="test-token",
         ),
-        current_user=SimpleNamespace(id=4),
+        current_user=make_user(4),
         db=object(),
     )
     body = await read_sse_body(response)
@@ -219,14 +224,69 @@ async def test_stream_sends_error_event_when_agent_fails(monkeypatch):
             scheme="Bearer",
             credentials="test-token",
         ),
-        current_user=SimpleNamespace(id=4),
+        current_user=make_user(4),
         db=object(),
     )
     body = await read_sse_body(response)
 
     assert "event: error" in body
+    assert chat_route.CHAT_FAILURE_MESSAGE in body
     assert "event: complete" not in body
     assert repository.saved_messages == []
+
+
+@pytest.mark.asyncio
+async def test_chat_returns_helpful_error_when_agent_fails(monkeypatch):
+    install_fake_services(monkeypatch, fail=True)
+
+    with pytest.raises(HTTPException) as error:
+        await chat_route.send_message(
+            request=ChatRequest(message="Check my balance"),
+            credentials=HTTPAuthorizationCredentials(
+                scheme="Bearer",
+                credentials="test-token",
+            ),
+            current_user=make_user(4),
+            db=object(),
+        )
+
+    assert error.value.status_code == 502
+    assert error.value.detail == chat_route.CHAT_FAILURE_MESSAGE
+    assert "simulated model failure" not in error.value.detail
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_message"),
+    [
+        (
+            TimeoutError(),
+            "The chat request timed out while waiting for a service.",
+        ),
+        (
+            httpx.ConnectError("connection refused"),
+            "Could not connect to a chat service.",
+        ),
+        (
+            httpx.HTTPStatusError(
+                "unauthorized",
+                request=httpx.Request("POST", "https://example.test"),
+                response=httpx.Response(
+                    401,
+                    request=httpx.Request("POST", "https://example.test"),
+                ),
+            ),
+            "A connected service rejected its credentials.",
+        ),
+    ],
+)
+def test_chat_error_message_explains_known_failures_without_details(
+    error,
+    expected_message,
+):
+    message = chat_route._chat_error_message(error)
+
+    assert expected_message in message
+    assert not str(error) or str(error) not in message
 
 
 @pytest.mark.asyncio
@@ -241,7 +301,7 @@ async def test_stream_rejects_a_session_owned_by_another_user(monkeypatch):
                 scheme="Bearer",
                 credentials="test-token",
             ),
-            current_user=SimpleNamespace(id=4),
+            current_user=make_user(4),
             db=object(),
         )
 
@@ -277,5 +337,6 @@ async def test_agent_combines_streamed_text_and_tool_call_chunks(monkeypatch):
     )
     assistant_message = result["messages"][0]
 
+    assert isinstance(assistant_message, AIMessage)
     assert assistant_message.content == "Checking your balance."
     assert assistant_message.tool_calls[0]["name"] == "get_my_leave_balance"

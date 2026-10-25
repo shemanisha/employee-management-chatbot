@@ -3,6 +3,7 @@ import json
 import logging
 
 from langchain_core.messages import (
+    AIMessage,
     AIMessageChunk,
     SystemMessage,
     ToolMessage,
@@ -20,6 +21,10 @@ class AgentNodes:
 
         # Existing authenticated MCP session
         self.mcp_session = mcp_session
+        self.allowed_tool_names = {
+            tool.name
+            for tool in mcp_tools
+        }
 
         # Convert MCP tools into Ollama tool definitions
         tool_definitions = []
@@ -63,7 +68,12 @@ class AgentNodes:
             if response is None:
                 raise RuntimeError("The model returned no response")
 
-            return {"messages": [response]}
+            completed_message = AIMessage(
+                **response.model_dump(
+                    exclude={"type", "tool_call_chunks"},
+                )
+            )
+            return {"messages": [completed_message]}
 
         except TimeoutError:
             logger.warning("Ollama timed out")
@@ -84,6 +94,30 @@ class AgentNodes:
             tool_name = tool_call["name"]
             arguments = tool_call["args"]
             tool_call_id = tool_call["id"]
+
+            if tool_name not in self.allowed_tool_names:
+                logger.warning("Blocked MCP tool not in the allow-list: %s", tool_name)
+                tool_results.append(
+                    ToolMessage(
+                        content='{"error":"This tool is not available."}',
+                        tool_call_id=tool_call_id,
+                        name=tool_name,
+                        status="error",
+                    )
+                )
+                continue
+
+            if not isinstance(arguments, dict):
+                logger.warning("Blocked MCP tool call with invalid arguments")
+                tool_results.append(
+                    ToolMessage(
+                        content='{"error":"Tool arguments must be an object."}',
+                        tool_call_id=tool_call_id,
+                        name=tool_name,
+                        status="error",
+                    )
+                )
+                continue
 
             print(f"\nCalling MCP tool: {tool_name}")
             print("Arguments:", arguments)

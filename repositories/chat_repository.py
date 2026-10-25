@@ -82,7 +82,7 @@ class ChatRepository:
 
             if saved_message.role == "human":
                 message = HumanMessage(content=content)
-            elif saved_message.role == "ai":
+            elif saved_message.role in ("ai", "AIMessageChunk"):
                 message = AIMessage(
                     content=content,
                     tool_calls=(
@@ -122,8 +122,10 @@ class ChatRepository:
         for message in messages:
             tool_name = None
             content = message.content
+            role = message.type
 
             if isinstance(message, AIMessage):
+                role = "ai"
                 if message.tool_calls:
                     content = TOOL_MESSAGE_PREFIX + json.dumps({
                         "content": message.content,
@@ -143,7 +145,7 @@ class ChatRepository:
             self.db.add(
                 ChatMessage(
                     session_id=chat_session.id,
-                    role=message.type,
+                    role=role,
                     content=content,
                     tool_name=tool_name,
                 )

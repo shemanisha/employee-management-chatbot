@@ -10,10 +10,12 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.graph import create_agent
 from api.dependencies import bearer_scheme, get_current_user
+from core.permissions import get_user_roles
 from core.config import settings
 from db.session import get_db
 from repositories.chat_repository import ChatRepository
@@ -23,10 +25,22 @@ from schemas.chat import (
     ChatResponse,
     ChatSessionResponse,
 )
-from services.chat_service import get_recent_messages, message_to_response
+from services.chat_service import (
+    MAX_REPLY_CHARACTERS,
+    filter_tools_for_user,
+    get_recent_messages,
+    message_to_response,
+    validate_assistant_reply,
+)
+from core.permissions import get_user_roles
 
 
 logger = logging.getLogger(__name__)
+
+CHAT_FAILURE_MESSAGE = (
+    "The chat service encountered an unexpected error. Please try again. "
+    "If it continues, check the server logs."
+)
 
 router = APIRouter(
     prefix="/chat",
@@ -50,6 +64,52 @@ def _text_from_chunk(chunk: AIMessageChunk) -> str:
             text_parts.append(content_part.get("text", ""))
 
     return "".join(text_parts)
+
+
+def _chat_error_message(error: Exception) -> str:
+    """Return actionable guidance without exposing internal exception details."""
+    if isinstance(error, (TimeoutError, httpx.TimeoutException)):
+        return (
+            "The chat request timed out while waiting for a service. "
+            "Check that Ollama and the MCP server are responsive, then try again."
+        )
+
+    if isinstance(error, httpx.ConnectError):
+        return (
+            "Could not connect to a chat service. Check that Ollama and the MCP "
+            "server are running and their configured URLs are correct."
+        )
+
+    if isinstance(error, httpx.HTTPStatusError):
+        status_code = error.response.status_code
+        if status_code in (401, 403):
+            return (
+                "A connected service rejected its credentials. Check the "
+                "service authentication configuration."
+            )
+        if status_code == 404:
+            return (
+                "A configured chat endpoint or model was not found. Check the "
+                "MCP server URL and Ollama model name."
+            )
+        return (
+            "A connected service returned an error. Check the Ollama and MCP "
+            "server logs, then try again."
+        )
+
+    if isinstance(error, SQLAlchemyError):
+        return (
+            "Could not access or save your conversation history. Check the "
+            "database connection, then try again."
+        )
+
+    if isinstance(error, ValueError):
+        return (
+            "The assistant returned an invalid response. Please try your "
+            "request again."
+        )
+
+    return CHAT_FAILURE_MESSAGE
 
 
 @asynccontextmanager
@@ -110,8 +170,12 @@ async def send_message(
         # Forward this user's token so MCP applies its normal role checks.
         async with _connect_to_mcp(credentials.credentials) as (
             mcp_session,
-            mcp_tools,
+            discovered_tools,
         ):
+            mcp_tools = filter_tools_for_user(
+                discovered_tools,
+                set(get_user_roles(current_user)),
+            )
             agent = create_agent(
                 mcp_session=mcp_session,
                 mcp_tools=mcp_tools,
@@ -129,20 +193,22 @@ async def send_message(
         ):
             raise RuntimeError("The agent did not return a final answer")
 
+        reply = validate_assistant_reply(all_messages[-1].content)
+
         # Save only this request's new messages, not the older context again.
         new_messages = all_messages[starting_message_count:]
         await repository.add_messages(chat_session, new_messages)
 
         return ChatResponse(
             session_id=chat_session.id,
-            reply=str(all_messages[-1].content),
+            reply=reply,
         )
 
     except Exception as error:
         logger.exception("Chat request failed")
         raise HTTPException(
             status_code=502,
-            detail="The chat service could not complete your request",
+            detail=_chat_error_message(error),
         ) from error
 
 
@@ -179,8 +245,12 @@ async def send_message_stream(
             yield _sse_event("status", {"status": "connecting"})
             async with _connect_to_mcp(credentials.credentials) as (
                 mcp_session,
-                mcp_tools,
+                discovered_tools,
             ):
+                mcp_tools = filter_tools_for_user(
+                    discovered_tools,
+                    set(get_user_roles(current_user)),
+                )
                 yield _sse_event("status", {"status": "thinking"})
 
                 agent = create_agent(
@@ -188,6 +258,7 @@ async def send_message_stream(
                     mcp_tools=mcp_tools,
                 )
 
+                streamed_reply_length = 0
                 async for mode, data in agent.astream(
                     {"messages": context_messages},
                     config={"recursion_limit": 12},
@@ -208,6 +279,13 @@ async def send_message_stream(
                         ):
                             text = _text_from_chunk(message_chunk)
                             if text:
+                                streamed_reply_length += len(text)
+                                if streamed_reply_length > MAX_REPLY_CHARACTERS:
+                                    yield _sse_event(
+                                        "error",
+                                        {"message": "Assistant response is too long"},
+                                    )
+                                    return
                                 yield _sse_event(
                                     "content",
                                     {"content": text},
@@ -254,7 +332,7 @@ async def send_message_stream(
                 raise RuntimeError("The agent did not return a final answer")
 
             yield _sse_event("status", {"status": "saving"})
-            reply = str(new_messages[-1].content)
+            reply = validate_assistant_reply(new_messages[-1].content)
             await repository.add_messages(chat_session, new_messages)
 
             yield _sse_event(
@@ -271,11 +349,11 @@ async def send_message_stream(
                 chat_session.id,
             )
             raise
-        except Exception:
+        except Exception as error:
             logger.exception("Streaming chat request failed")
             yield _sse_event(
                 "error",
-                {"message": "The chat service could not complete your request"},
+                {"message": _chat_error_message(error)},
             )
 
     return StreamingResponse(

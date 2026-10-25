@@ -1,8 +1,14 @@
 from types import SimpleNamespace
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    HumanMessage,
+    ToolMessage,
+)
 import pytest
 
+from models.chat_message import ChatMessage
 from repositories.chat_repository import ChatRepository
 from services.chat_service import get_recent_messages, message_to_response
 
@@ -127,3 +133,37 @@ async def test_repository_restores_tool_calls_from_saved_messages():
     assert len(restored_messages) == 3
     assert restored_messages[1].tool_calls[0]["id"] == "call-456"
     assert restored_messages[2].tool_call_id == "call-456"
+
+
+@pytest.mark.asyncio
+async def test_repository_saves_ai_message_chunks_with_canonical_role():
+    database = FakeDatabase()
+    repository = ChatRepository(database)
+    chat_session = SimpleNamespace(id=6, updated_at=None)
+
+    await repository.add_messages(
+        chat_session,
+        [AIMessageChunk(content="A streamed answer.")],
+    )
+
+    assert database.rows[0].role == "ai"
+
+
+@pytest.mark.asyncio
+async def test_repository_restores_legacy_ai_message_chunk_role():
+    database = FakeDatabase()
+    database.rows.append(
+        ChatMessage(
+            session_id=7,
+            role="AIMessageChunk",
+            content="A previously saved answer.",
+            tool_name=None,
+        )
+    )
+    repository = ChatRepository(database)
+
+    restored_messages = await repository.get_messages(7)
+
+    assert len(restored_messages) == 1
+    assert isinstance(restored_messages[0], AIMessage)
+    assert restored_messages[0].content == "A previously saved answer."

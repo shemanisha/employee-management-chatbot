@@ -509,7 +509,7 @@ Phase 14  LangGraph Agent               ✅ Implemented
 Phase 15  Agent ↔ MCP Integration       ✅ Implemented
 Phase 16  Conversation History          ✅ Implemented
 Phase 17  SSE Streaming                 ✅ Implemented
-Phase 18  Guardrails                    ⬜ Planned
+Phase 18  Guardrails                    ✅ Implemented
 Phase 19  Observability                 ⬜ Planned
 Phase 20  Evaluation Harness            ⬜ Planned
 Phase 21  Testing                       ⬜ Planned
@@ -963,9 +963,11 @@ save an incomplete turn.
 
 # Phase 18 — Guardrails
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Implement guardrails at multiple layers.
+Guardrails are applied at several independent layers. The LLM prompt gives
+the agent safe behavior instructions, but authorization and validation are
+enforced by application code and backend services.
 
 ```text
 Input Guardrails
@@ -986,6 +988,31 @@ Output Validation
 ```
 
 The LLM will never be treated as the security boundary.
+
+Implemented checks:
+
+- **Input:** chat messages are trimmed, must not be blank, and are limited to
+  2,000 characters.
+- **Agent:** the system prompt says not to treat user or tool-result text as
+  instructions that can override security rules.
+- **Tool allow list:** the API only gives the model tools allowed for the
+  authenticated user's roles. Unknown tools are excluded; the agent also
+  blocks tool calls that are not on its allow list.
+- **RBAC:** the MCP server independently checks the user's role for each tool.
+- **Ownership:** chat-session queries include both the session ID and
+  authenticated user ID.
+- **Service validation:** existing services and request schemas validate
+  business rules such as leave dates, balances, and required employee data.
+- **Database constraints:** existing foreign keys, required columns, and
+  uniqueness constraints provide an additional integrity layer.
+- **Output:** assistant replies must be non-empty text and no longer than
+  8,000 characters. The same limit is checked while streaming.
+
+Run the guardrail and chat regression tests with:
+
+```bash
+./.venv/bin/pytest -q tests/test_guardrails.py tests/test_chat_stream.py tests/test_chat_history.py
+```
 
 ---
 
