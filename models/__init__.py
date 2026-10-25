@@ -8,3 +8,5 @@ from models.user_role import UserRole
 from models.leave_type import LeaveType
 from models.leave_balance import LeaveBalance
 from models.leave_request import LeaveRequest
+from models.chat_message import ChatMessage
+from models.chat_session import ChatSession

@@ -5,6 +5,7 @@ from api.routes.employees import router as employee_router
 from api.routes.leaves import router as leave_router
 from api.routes.manager import router as manager_router
 from api.routes.hr import router as hr_router
+from api.routes.chat import router as chat_router
 
 from fastapi.responses import JSONResponse
 
@@ -32,6 +33,7 @@ app.include_router(leave_router)
 app.include_router(manager_router)
 
 app.include_router(hr_router)
+app.include_router(chat_router)
 
 
 @app.exception_handler(EmployeeNotFoundError)

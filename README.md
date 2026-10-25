@@ -507,7 +507,7 @@ Phase 12  MCP Client                    ✅ Implemented
 Phase 13  LLM / Ollama                  ✅ Implemented
 Phase 14  LangGraph Agent               ✅ Implemented
 Phase 15  Agent ↔ MCP Integration       ✅ Implemented
-Phase 16  Conversation History          ⬜ Planned
+Phase 16  Conversation History          ✅ Implemented
 Phase 17  SSE Streaming                 ⬜ Planned
 Phase 18  Guardrails                    ⬜ Planned
 Phase 19  Observability                 ⬜ Planned
@@ -766,9 +766,10 @@ The first version will use one agent rather than unnecessary multi-agent complex
 
 **Status: ✅ Implemented**
 
-`run_agent.py` connects the interactive chat loop to Ollama, LangGraph, and
-the MCP server. The MCP session uses the signed-in user's JWT, so tools apply
-the existing authentication and authorization rules.
+`run_agent.py` sends chat messages to the authenticated `POST /chat` API.
+That API runs Ollama and LangGraph, then calls the MCP server using the same
+user's JWT. This means the interactive runner uses the same persistent
+conversation history as other API clients.
 
 ```text
 User
@@ -812,8 +813,9 @@ PostgreSQL
    ./.venv/bin/python run_agent.py
    ```
 
-4. Paste the access token returned by `POST /auth/login`, then ask a question.
-   Type `exit` to stop the chat.
+4. Paste the access token returned by `POST /auth/login`. Press Enter to start
+   a new conversation, or enter a session ID printed by an earlier run to
+   continue that conversation. Type `exit` to stop the chat.
 
 Example question:
 
@@ -825,23 +827,85 @@ Example question:
 
 # Phase 16 — Conversation History
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Add:
+Conversation data is saved in PostgreSQL in two tables:
 
 ```text
 chat_sessions
 chat_messages
 ```
 
-Support:
+`chat_sessions` stores the owner, a short title, and timestamps.
+`chat_messages` uses the existing `session_id`, `role`, `content`, `tool_name`,
+and `created_at` columns (plus its database ID). Tool-call arguments and call
+IDs are stored as a small JSON envelope inside `content` for assistant/tool
+messages, so the existing database table does not need extra columns.
 
-- Conversation sessions
-- Persistent messages
-- Session ownership
-- Conversation context
-- Tool-call history where required
-- History limits
+All chat endpoints require a bearer token. A user can access only their own
+sessions.
+
+The `POST /chat` endpoint starts a new session when `session_id` is omitted.
+The response includes the `session_id`; send that ID with the next message to
+continue the same conversation. The `GET /chat/sessions` endpoint lists the
+signed-in user's conversations, and `GET /chat/sessions/{session_id}` returns
+the messages for one of their conversations.
+
+The API limits each message to 2,000 characters and gives the agent the latest
+10 user turns as context. Older messages remain saved and can still be viewed;
+they are just left out of the model prompt to limit request size.
+
+## Create the chat tables
+
+From the project root, run this after setting up the database:
+
+```bash
+./.venv/bin/python -m db.create_tables
+```
+
+This project uses SQLAlchemy `create_all` for local setup. It creates missing
+tables and leaves existing tables in place.
+
+The focused history checks can be run with:
+
+```bash
+./.venv/bin/pytest tests/test_chat_history.py
+```
+
+## Send a chat message
+
+First, get an access token from `POST /auth/login`. Then send a request like
+this:
+
+```http
+POST /chat
+Authorization: Bearer <your-access-token>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "How many casual leave days do I have?"
+}
+```
+
+Example response:
+
+```json
+{
+  "session_id": 1,
+  "reply": "You have 7 casual leave days remaining."
+}
+```
+
+To continue, include the returned session ID:
+
+```json
+{
+  "session_id": 1,
+  "message": "And how many sick leave days do I have?"
+}
+```
 
 ---
 

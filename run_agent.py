@@ -1,111 +1,82 @@
 import asyncio
-import os
 from getpass import getpass
 
+import httpx
 from dotenv import load_dotenv
-
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-
-from langchain_core.messages import HumanMessage
-
-from agent.graph import create_agent
 
 
 load_dotenv()
 
-
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL")
+CHAT_API_URL = "http://127.0.0.1:8000/chat"
 
 
 async def main():
+    """Talk to the agent through the API and keep using the same chat session."""
+    access_token = getpass("Enter your access token: ").strip()
 
-    # Step 1: Get JWT
-    token = getpass("Enter JWT token: ").strip()
-
-    if not token:
-        print("JWT token is required")
+    if not access_token:
+        print("An access token is required.")
         return
 
+    saved_session_id = input(
+        "Enter a chat session ID to continue, or press Enter for a new chat: "
+    ).strip()
+
+    if saved_session_id:
+        try:
+            session_id = int(saved_session_id)
+        except ValueError:
+            print("The session ID must be a number.")
+            return
+    else:
+        session_id = None
+
     headers = {
-        "Authorization": f"Bearer {token}"
+        "Authorization": f"Bearer {access_token}",
     }
 
-    # Step 2: Connect to MCP server
-    async with streamablehttp_client(
-        MCP_SERVER_URL,
-        headers=headers,
-        timeout=20,
-        sse_read_timeout=60,
-    ) as (read, write, _):
+    print("\nChat is ready. Type 'exit' to stop.")
 
-        async with ClientSession(read, write) as session:
+    async with httpx.AsyncClient(timeout=120) as client:
+        while True:
+            message = input("\nYou: ").strip()
 
-            # Step 3: Initialize MCP
-            await session.initialize()
+            if message.lower() == "exit":
+                break
 
-            print("\nMCP connected successfully!")
+            if not message:
+                continue
 
-            # Step 4: Discover MCP tools
-            response = await session.list_tools()
+            request_data: dict[str, str | int] = {"message": message}
+            if session_id is not None:
+                request_data["session_id"] = session_id
 
-            tools = response.tools
-
-            print("\nAvailable MCP tools:")
-
-            for tool in tools:
-                print("-", tool.name)
-
-            # Step 5: Create LangGraph agent
-            agent = create_agent(
-                mcp_session=session,
-                mcp_tools=tools,
-            )
-
-            print("\nEmployee AI Assistant is ready!")
-            print("Type 'exit' to stop.")
-
-            # Step 6: Conversation
-            messages = []
-
-            while True:
-
-                question = await asyncio.to_thread(
-                    input,
-                    "\nYou: "
+            try:
+                response = await client.post(
+                    CHAT_API_URL,
+                    headers=headers,
+                    json=request_data,
                 )
+                response.raise_for_status()
+                result = response.json()
 
-                if question.lower() == "exit":
-                    break
+                session_id = result["session_id"]
+                print(f"\nChat session ID: {session_id}")
+                print(f"Assistant: {result['reply']}")
 
-                if not question.strip():
-                    continue
-
-                # Add the user question
-                messages.append(
-                    HumanMessage(content=question)
-                )
-
+            except httpx.HTTPStatusError as error:
                 try:
-                    # Step 7: Run LangGraph
-                    result = await agent.ainvoke(
-                        {"messages": messages},
-                        config={"recursion_limit": 12},
+                    detail = error.response.json().get(
+                        "detail",
+                        "The chat request failed.",
                     )
+                except ValueError:
+                    detail = "The chat request failed."
 
-                    # Update conversation history
-                    messages = result["messages"]
+                print(f"\nError: {detail}")
 
-                    # Step 8: Show final answer
-                    final_message = messages[-1]
-
-                    print("\nAssistant:")
-                    print(final_message.content)
-
-                except Exception as error:
-                    # Remove the unanswered user question
-                    messages.pop()
-                    print(f"\nAgent error: {error}")
+            except httpx.HTTPError as error:
+                print(f"\nCould not connect to the API: {error}")
 
 
 if __name__ == "__main__":
