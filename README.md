@@ -508,7 +508,7 @@ Phase 13  LLM / Ollama                  ✅ Implemented
 Phase 14  LangGraph Agent               ✅ Implemented
 Phase 15  Agent ↔ MCP Integration       ✅ Implemented
 Phase 16  Conversation History          ✅ Implemented
-Phase 17  SSE Streaming                 ⬜ Planned
+Phase 17  SSE Streaming                 ✅ Implemented
 Phase 18  Guardrails                    ⬜ Planned
 Phase 19  Observability                 ⬜ Planned
 Phase 20  Evaluation Harness            ⬜ Planned
@@ -911,28 +911,53 @@ To continue, include the returned session ID:
 
 # Phase 17 — SSE Streaming
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Implement Server-Sent Events for streaming chatbot responses.
+`POST /chat/stream` streams chatbot events using Server-Sent Events (SSE).
+The existing `POST /chat` remains a normal JSON endpoint.
 
 ```text
-POST /chat
+POST /chat/stream
     ↓
 Agent
     ↓
 SSE
     ↓
-Frontend
+Client
 ```
 
-Streaming will include:
+The stream sends these named events:
 
-- Status events
-- Token/content events
-- Tool execution status
-- Completion event
-- Error event
-- Client disconnect handling
+- `status`: startup, thinking, and saving progress
+- `content`: each text chunk from the model
+- `tool_status`: tool name and started/completed/error status
+- `complete`: final reply and conversation `session_id`
+- `error`: a safe error message if processing fails
+
+## Try the stream with curl
+
+Get an access token from `POST /auth/login`, then run:
+
+```bash
+curl -N http://127.0.0.1:8000/chat/stream \
+  -H "Authorization: Bearer <your-access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"How many casual leave days do I have?"}'
+```
+
+The first request creates a chat session. To continue it, send the `session_id`
+from the `complete` event:
+
+```bash
+curl -N http://127.0.0.1:8000/chat/stream \
+  -H "Authorization: Bearer <your-access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":1,"message":"And how many sick leave days do I have?"}'
+```
+
+The session ID is checked against the signed-in user before the stream starts.
+If the client disconnects, the server cancels the running stream and does not
+save an incomplete turn.
 
 ---
 

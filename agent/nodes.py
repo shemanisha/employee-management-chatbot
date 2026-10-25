@@ -3,6 +3,7 @@ import json
 import logging
 
 from langchain_core.messages import (
+    AIMessageChunk,
     SystemMessage,
     ToolMessage,
 )
@@ -50,13 +51,17 @@ class AgentNodes:
         messages.extend(state["messages"])
 
         try:
-            response = await asyncio.wait_for(
-                self.llm.ainvoke(messages),
-                timeout=60,
-            )
+            response: AIMessageChunk | None = None
 
-            print("\nOllama response:", response.content)
-            print("Tool calls:", response.tool_calls)
+            async with asyncio.timeout(60):
+                async for chunk in self.llm.astream(messages):
+                    if response is None:
+                        response = chunk
+                    else:
+                        response += chunk
+
+            if response is None:
+                raise RuntimeError("The model returned no response")
 
             return {"messages": [response]}
 
