@@ -1039,9 +1039,40 @@ Sensitive information such as passwords and JWT tokens must not be logged.
 
 # Phase 20 — Evaluation Harness
 
-**Status: ⬜ Planned**
+**Status: 🟡 Evaluation tooling implemented; live data run requires explicit setup**
 
-The evaluation harness will measure the AI agent automatically.
+The evaluation harness supports test fixtures and a separate real-MCP smoke
+evaluation. The real-MCP runner is limited to the authenticated user's own
+leave balance and manager lookups. It does not expose write tools, save
+conversation history, or include personal tool results in its Markdown report.
+
+Run the real-MCP checks from the project root:
+
+```bash
+./.venv/bin/python -m evals.real_mcp_eval
+```
+
+The runner reads `MCP_SERVER_URL` from `.env` and asks for a short-lived test
+JWT with hidden terminal input. It uses only `get_my_leave_balance` and
+`get_my_manager`; the MCP server must still enforce its own authorization.
+Reports are written under `evals/reports/`.
+
+The report measures expected tool selection and arguments, whether a tool
+returned an error, whether a final answer was returned, unauthorized tool
+attempts, bypasses observed in the run, and latency. Task completion means
+only that a final answer followed a successful tool result; it does not
+independently judge semantic correctness or groundedness.
+
+The runner tests the configured MCP endpoint only. It cannot verify whether
+that MCP server is connected to a production database. Check `MCP_SERVER_URL`
+and the MCP server's own database configuration before calling a run
+"production". Do not commit a report if its environment or other metadata is
+sensitive.
+
+The real-MCP smoke checks do not cover authorization attacks, multi-turn
+history, or induced tool errors. Those scenarios should be covered by a
+separate offline evaluation suite with fake MCP results before being treated
+as production-verified.
 
 Important metrics:
 
