@@ -1,10 +1,21 @@
 import logging
+import re
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
 
 MAX_HISTORY_TURNS = 10
 MAX_REPLY_CHARACTERS = 8000
+SCOPE_FALLBACK_REPLY = (
+    "I'm an AI assistant for the Employee Management System. I can help with "
+    "leave balances and requests, manager and team information, employee "
+    "profiles, and related HR tasks. What would you like help with?"
+)
+_INTERNAL_TOOL_TEXT = re.compile(
+    r"\b(function call|tool call|function to use|tool schema)\b|"
+    r'"parameters"\s*:',
+    re.IGNORECASE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +81,21 @@ def validate_assistant_reply(reply: str) -> str:
 
     if len(reply) > MAX_REPLY_CHARACTERS:
         raise ValueError("Assistant response is too long")
+
+    return reply
+
+
+def sanitize_assistant_reply(reply: str, tool_names: set[str]) -> str:
+    """Replace tool-debugging text with a user-facing product description."""
+    reply = validate_assistant_reply(reply)
+    normalized_reply = reply.casefold()
+
+    if _INTERNAL_TOOL_TEXT.search(reply) or any(
+        tool_name.casefold() in normalized_reply
+        for tool_name in tool_names
+        if tool_name
+    ):
+        return SCOPE_FALLBACK_REPLY
 
     return reply
 

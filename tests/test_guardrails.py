@@ -8,7 +8,9 @@ from agent.nodes import AgentNodes
 from schemas.chat import ChatRequest, ChatResponse
 from services.chat_service import (
     MAX_REPLY_CHARACTERS,
+    SCOPE_FALLBACK_REPLY,
     filter_tools_for_user,
+    sanitize_assistant_reply,
     validate_assistant_reply,
 )
 
@@ -54,6 +56,22 @@ def test_output_validation_rejects_blank_and_oversized_replies():
 
     with pytest.raises(ValidationError):
         ChatResponse(session_id=1, reply="")
+
+
+def test_internal_tool_instructions_are_replaced_with_scope_description():
+    reply = (
+        "This is not a function call that answers the prompt. "
+        '{"name": "get_my_leave_balance", "parameters": {}}'
+    )
+
+    sanitized_reply = sanitize_assistant_reply(
+        reply,
+        {"get_my_leave_balance"},
+    )
+
+    assert sanitized_reply == SCOPE_FALLBACK_REPLY
+    assert "get_my_leave_balance" not in sanitized_reply
+    assert "parameters" not in sanitized_reply
 
 
 @pytest.mark.asyncio

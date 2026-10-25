@@ -15,6 +15,7 @@ from langchain_core.messages import (
 import agent.nodes as agent_nodes_module
 import api.routes.chat as chat_route
 from schemas.chat import ChatRequest
+from services.chat_service import SCOPE_FALLBACK_REPLY
 
 
 class FakeRepository:
@@ -56,9 +57,10 @@ class FakeMCPClientSession:
 
 
 class FakeAgent:
-    def __init__(self, disconnect=False, fail=False):
+    def __init__(self, disconnect=False, fail=False, reply_text="You have 7 days."):
         self.disconnect = disconnect
         self.fail = fail
+        self.reply_text = reply_text
 
     async def astream(self, *_args, **_kwargs):
         if self.fail:
@@ -101,11 +103,11 @@ class FakeAgent:
             }
         }
         yield "messages", (
-            AIMessageChunk(content="You have 7 days."),
+            AIMessageChunk(content=self.reply_text),
             {"langgraph_node": "agent"},
         )
         yield "updates", {
-            "agent": {"messages": [AIMessage(content="You have 7 days.")]}
+            "agent": {"messages": [AIMessage(content=self.reply_text)]}
         }
 
 
@@ -127,7 +129,12 @@ async def read_sse_body(response):
     return b"".join(chunks).decode()
 
 
-def install_fake_services(monkeypatch, disconnect=False, fail=False):
+def install_fake_services(
+    monkeypatch,
+    disconnect=False,
+    fail=False,
+    reply_text="You have 7 days.",
+):
     repository = FakeRepository(None)
     request_headers = {}
 
@@ -154,7 +161,11 @@ def install_fake_services(monkeypatch, disconnect=False, fail=False):
     monkeypatch.setattr(
         chat_route,
         "create_agent",
-        lambda **_kwargs: FakeAgent(disconnect=disconnect, fail=fail),
+        lambda **_kwargs: FakeAgent(
+            disconnect=disconnect,
+            fail=fail,
+            reply_text=reply_text,
+        ),
     )
 
     return repository, request_headers
@@ -191,6 +202,35 @@ async def test_stream_sends_events_and_saves_completed_turn(monkeypatch):
         "tool",
         "ai",
     ]
+
+
+@pytest.mark.asyncio
+async def test_stream_hides_internal_tool_instructions(monkeypatch):
+    internal_reply = (
+        "This is not a function call that answers the prompt. "
+        '{"name": "get_my_leave_balance", "parameters": {}}'
+    )
+    repository, _ = install_fake_services(
+        monkeypatch,
+        reply_text=internal_reply,
+    )
+
+    response = await chat_route.send_message_stream(
+        request=ChatRequest(message="What can you help me with?"),
+        http_request=FakeRequest(),
+        credentials=HTTPAuthorizationCredentials(
+            scheme="Bearer",
+            credentials="test-token",
+        ),
+        current_user=make_user(4),
+        db=object(),
+    )
+    body = await read_sse_body(response)
+
+    assert "get_my_leave_balance" not in body
+    assert '"parameters"' not in body
+    assert SCOPE_FALLBACK_REPLY in body
+    assert repository.saved_messages[-1].content == SCOPE_FALLBACK_REPLY
 
 
 @pytest.mark.asyncio

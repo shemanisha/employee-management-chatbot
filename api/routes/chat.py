@@ -30,7 +30,7 @@ from services.chat_service import (
     filter_tools_for_user,
     get_recent_messages,
     message_to_response,
-    validate_assistant_reply,
+    sanitize_assistant_reply,
 )
 from core.permissions import get_user_roles
 
@@ -193,10 +193,15 @@ async def send_message(
         ):
             raise RuntimeError("The agent did not return a final answer")
 
-        reply = validate_assistant_reply(all_messages[-1].content)
-
         # Save only this request's new messages, not the older context again.
         new_messages = all_messages[starting_message_count:]
+        reply = sanitize_assistant_reply(
+            all_messages[-1].content,
+            {tool.name for tool in mcp_tools},
+        )
+        new_messages[-1] = new_messages[-1].model_copy(
+            update={"content": reply}
+        )
         await repository.add_messages(chat_session, new_messages)
 
         return ChatResponse(
@@ -286,10 +291,6 @@ async def send_message_stream(
                                         {"message": "Assistant response is too long"},
                                     )
                                     return
-                                yield _sse_event(
-                                    "content",
-                                    {"content": text},
-                                )
 
                     elif mode == "updates":
                         for node_name, update in data.items():
@@ -303,7 +304,7 @@ async def send_message_stream(
                                             yield _sse_event(
                                                 "tool_status",
                                                 {
-                                                    "tool": tool_call["name"],
+                                                    "tool": "Employee management action",
                                                     "status": "started",
                                                 },
                                             )
@@ -314,7 +315,7 @@ async def send_message_stream(
                                         yield _sse_event(
                                             "tool_status",
                                             {
-                                                "tool": message.name,
+                                                "tool": "Employee management action",
                                                 "status": (
                                                     "error"
                                                     if message.status == "error"
@@ -332,9 +333,16 @@ async def send_message_stream(
                 raise RuntimeError("The agent did not return a final answer")
 
             yield _sse_event("status", {"status": "saving"})
-            reply = validate_assistant_reply(new_messages[-1].content)
+            reply = sanitize_assistant_reply(
+                new_messages[-1].content,
+                {tool.name for tool in mcp_tools},
+            )
+            new_messages[-1] = new_messages[-1].model_copy(
+                update={"content": reply}
+            )
             await repository.add_messages(chat_session, new_messages)
 
+            yield _sse_event("content", {"content": reply})
             yield _sse_event(
                 "complete",
                 {
