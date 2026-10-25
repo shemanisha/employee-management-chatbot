@@ -500,7 +500,7 @@ Phase 7   Authentication + JWT          ✅
 -------------------------------------------
 
 Phase 8   RBAC + Authorization          ✅ Implemented
-Phase 9   Employee/Leave APIs           ⬜ Planned
+Phase 9   Employee/Leave APIs           ✅ Implemented
 Phase 10  MCP Server                    ✅ Implemented
 Phase 11  MCP Tools + Security          ✅ Implemented
 Phase 12  MCP Client                    ⬜ Planned
@@ -564,11 +564,12 @@ authorization test coverage and production hardening remain separate work.
 
 # Phase 9 — Employee and Leave APIs
 
-**Status: ⬜ Planned**
+**Status: ✅ Implemented**
 
-Complete normal APIs before introducing AI.
+The employee, leave, manager, and HR APIs are implemented before introducing
+AI.
 
-Planned APIs:
+Implemented APIs:
 
 ```text
 GET  /employees/me
@@ -587,6 +588,9 @@ GET   /hr/employees
 POST  /hr/employees
 PATCH /hr/employees/{id}
 ```
+
+HR can also deactivate an employee with
+`PATCH /hr/employees/{id}/deactivate`.
 
 ---
 

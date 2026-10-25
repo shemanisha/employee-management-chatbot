@@ -1,4 +1,10 @@
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    field_validator,
+    model_validator,
+)
 
 
 class EmployeeCreateRequest(BaseModel):
@@ -35,3 +41,22 @@ class EmployeeUpdateRequest(BaseModel):
     designation: str | None = None
 
     manager_id: int | None = None
+
+    @field_validator(
+        "first_name",
+        "last_name",
+        "department_id",
+        "designation",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_required_fields(cls, value):
+        if value is None:
+            raise ValueError("This field cannot be null")
+        return value
+
+    @model_validator(mode="after")
+    def require_at_least_one_field(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one field must be provided")
+        return self

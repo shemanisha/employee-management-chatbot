@@ -7,7 +7,10 @@ from api.dependencies import hr_only
 
 from db.session import get_db
 
-from schemas.employee import EmployeeCreateRequest
+from schemas.employee import (
+    EmployeeCreateRequest,
+    EmployeeUpdateRequest,
+)
 
 from services.hr_service import HRService
 
@@ -67,6 +70,34 @@ async def create_employee(
     return {
         "message": "Employee created",
         "employee_id": employee.id
+    }
+
+
+@router.patch("/employees/{employee_id}")
+async def update_employee(
+    employee_id: int,
+    request: EmployeeUpdateRequest,
+    current_user=Depends(hr_only),
+    db: AsyncSession=Depends(get_db)
+):
+
+    service = HRService(db)
+
+    employee = await service.update_employee(
+        employee_id,
+        request
+    )
+
+    return {
+        "id": employee.id,
+        "employee_code": employee.employee_code,
+        "first_name": employee.firstname,
+        "last_name": employee.lastname,
+        "email": employee.email,
+        "department_id": employee.department_id,
+        "designation": employee.designation,
+        "manager_id": employee.manager_id,
+        "status": employee.status,
     }
 
 
